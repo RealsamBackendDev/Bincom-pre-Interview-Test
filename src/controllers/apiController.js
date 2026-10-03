@@ -12,7 +12,7 @@ const {
 const { asyncHandler } = require("../utils/helpers");
 
 const lgas = asyncHandler(async (req, res) => {
-  res.json(await getLgas());
+  res.json(await getLgas(req.query.with_pus === "1"));
 });
 
 const wards = asyncHandler(async (req, res) => {

@@ -1,6 +1,6 @@
 async function fetchJSON(url) {
   const res = await fetch(url);
-  if (!res.ok) throw new Error("Request failed: " + url);
+  if (!res.ok) throw new Error(url + " returned status " + res.status);
   return res.json();
 }
 
@@ -25,6 +25,15 @@ function fillSelect(select, items, valueKey, labelKey, placeholder) {
   select.disabled = items.length === 0;
 }
 
+function fillSelectWithError(select, message) {
+  select.innerHTML = "";
+  const opt = document.createElement("option");
+  opt.value = "";
+  opt.textContent = message;
+  select.appendChild(opt);
+  select.disabled = true;
+}
+
 function puLabel(unit) {
   const parts = [unit.polling_unit_number, unit.polling_unit_name]
     .filter((v) => v !== null && v !== undefined && String(v).trim() !== "");
@@ -35,7 +44,9 @@ function fillPuSelect(select, units) {
   select.innerHTML = "";
   const ph = document.createElement("option");
   ph.value = "";
-  ph.textContent = "-- Select Polling Unit --";
+  ph.textContent = units.length === 0
+    ? "-- No polling units in this ward --"
+    : "-- Select Polling Unit --";
   select.appendChild(ph);
   units.forEach((unit) => {
     const opt = document.createElement("option");
@@ -65,10 +76,23 @@ function resultsTable(rows, scoreHeading) {
     body + '</tbody><tfoot><tr><td>Total</td><td>' + total + "</td></tr></tfoot></table>";
 }
 
+function loadErrorHtml(err) {
+  return '<p class="empty">Could not load data from the server. Details: ' + esc(err.message) +
+    '<br>Check that the server is running, the database was imported, and that src/public/app.js exists.</p>';
+}
+
 async function loadLgaSelect(lgaSelect, wardSelect, puSelect) {
+  fillSelect(lgaSelect, [], "lga_id", "lga_name", "-- Select Local Government --");
   fillSelect(wardSelect, [], "uniqueid", "ward_name", "-- Select Ward --");
   fillPuSelect(puSelect, []);
-  const lgas = await fetchJSON("/api/lgas");
+  let lgas = [];
+  try {
+    lgas = await fetchJSON("/api/lgas?with_pus=1");
+  } catch (err) {
+    fillSelectWithError(lgaSelect, "Could not load local governments");
+    console.error(err);
+    return;
+  }
   fillSelect(lgaSelect, lgas, "lga_id", "lga_name", "-- Select Local Government --");
 
   lgaSelect.addEventListener("change", async () => {
@@ -77,8 +101,17 @@ async function loadLgaSelect(lgaSelect, wardSelect, puSelect) {
       fillSelect(wardSelect, [], "uniqueid", "ward_name", "-- Select Ward --");
       return;
     }
-    const wards = await fetchJSON("/api/wards?lga=" + encodeURIComponent(lgaSelect.value));
-    fillSelect(wardSelect, wards, "uniqueid", "ward_name", "-- Select Ward --");
+    try {
+      const wards = await fetchJSON("/api/wards?lga=" + encodeURIComponent(lgaSelect.value));
+      if (wards.length === 0) {
+        fillSelectWithError(wardSelect, "No wards with polling units in this LGA");
+      } else {
+        fillSelect(wardSelect, wards, "uniqueid", "ward_name", "-- Select Ward --");
+      }
+    } catch (err) {
+      fillSelectWithError(wardSelect, "Could not load wards");
+      console.error(err);
+    }
   });
 
   wardSelect.addEventListener("change", async () => {
@@ -86,8 +119,13 @@ async function loadLgaSelect(lgaSelect, wardSelect, puSelect) {
       fillPuSelect(puSelect, []);
       return;
     }
-    const units = await fetchJSON("/api/polling-units?ward=" + encodeURIComponent(wardSelect.value));
-    fillPuSelect(puSelect, units);
+    try {
+      const units = await fetchJSON("/api/polling-units?ward=" + encodeURIComponent(wardSelect.value));
+      fillPuSelect(puSelect, units);
+    } catch (err) {
+      fillSelectWithError(puSelect, "Could not load polling units");
+      console.error(err);
+    }
   });
 }
 
@@ -105,7 +143,13 @@ async function initQ1() {
       return;
     }
     results.innerHTML = '<p class="muted">Loading...</p>';
-    const data = await fetchJSON("/api/pu-results?pu=" + encodeURIComponent(puSelect.value));
+    let data;
+    try {
+      data = await fetchJSON("/api/pu-results?pu=" + encodeURIComponent(puSelect.value));
+    } catch (err) {
+      results.innerHTML = loadErrorHtml(err);
+      return;
+    }
     if (!data.polling_unit) {
       results.innerHTML = '<p class="empty">Polling unit not found.</p>';
       return;
@@ -125,8 +169,15 @@ async function initQ2() {
   const lgaSelect = document.getElementById("lgaSelect");
   const results = document.getElementById("results");
 
-  const lgas = await fetchJSON("/api/lgas");
-  fillSelect(lgaSelect, lgas, "lga_id", "lga_name", "-- Select Local Government --");
+  let lgas = [];
+  try {
+    lgas = await fetchJSON("/api/lgas");
+    fillSelect(lgaSelect, lgas, "lga_id", "lga_name", "-- Select Local Government --");
+  } catch (err) {
+    fillSelectWithError(lgaSelect, "Could not load local governments");
+    console.error(err);
+    return;
+  }
 
   lgaSelect.addEventListener("change", async () => {
     if (!lgaSelect.value) {
@@ -134,7 +185,13 @@ async function initQ2() {
       return;
     }
     results.innerHTML = '<p class="muted">Loading...</p>';
-    const data = await fetchJSON("/api/lga-results?lga=" + encodeURIComponent(lgaSelect.value));
+    let data;
+    try {
+      data = await fetchJSON("/api/lga-results?lga=" + encodeURIComponent(lgaSelect.value));
+    } catch (err) {
+      results.innerHTML = loadErrorHtml(err);
+      return;
+    }
     let html = '<div class="panel"><h2>' + esc(data.lga_name || "Local Government") + "</h2>";
     html += '<p class="muted">' + esc(data.polling_units) + " polling unit(s) with announced results under this LGA</p></div>";
     html += '<div class="grid">';

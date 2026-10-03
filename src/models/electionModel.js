@@ -1,15 +1,32 @@
 const pool = require("../config/db");
 
-const getLgas = async () => {
-  const { rows } = await pool.query(
-    "SELECT lga_id, lga_name FROM lga WHERE state_id = 25 ORDER BY lga_name"
-  );
+const getLgas = async (withPusOnly) => {
+  const sql = withPusOnly
+    ? `SELECT l.lga_id, l.lga_name
+       FROM lga l
+       WHERE l.state_id = 25
+         AND EXISTS (
+           SELECT 1 FROM polling_unit pu
+           WHERE pu.lga_id = l.lga_id
+             AND (NULLIF(pu.polling_unit_number, '') IS NOT NULL OR NULLIF(pu.polling_unit_name, '') IS NOT NULL)
+         )
+       ORDER BY l.lga_name`
+    : "SELECT lga_id, lga_name FROM lga WHERE state_id = 25 ORDER BY lga_name";
+  const { rows } = await pool.query(sql);
   return rows;
 };
 
 const getWardsByLga = async (lgaId) => {
   const { rows } = await pool.query(
-    "SELECT uniqueid, ward_name FROM ward WHERE lga_id = $1 ORDER BY ward_name",
+    `SELECT w.uniqueid, w.ward_name
+     FROM ward w
+     WHERE w.lga_id = $1
+       AND EXISTS (
+         SELECT 1 FROM polling_unit pu
+         WHERE pu.uniquewardid = w.uniqueid
+           AND (NULLIF(pu.polling_unit_number, '') IS NOT NULL OR NULLIF(pu.polling_unit_name, '') IS NOT NULL)
+       )
+     ORDER BY w.ward_name`,
     [lgaId]
   );
   return rows;

@@ -61,12 +61,13 @@ function layout(title, body, page) {
 <nav>
   <a class="brand" href="/">INEC 2011 Results Portal</a>
   <div class="links">
-    <a href="/question1">Question 1: Polling Unit</a>
-    <a href="/question2">Question 2: LGA Total</a>
-    <a href="/question3">Question 3: Store Result</a>
+    <a href="/question1">Polling Unit</a>
+    <a href="/question2">LGA Total</a>
+    <a href="/question3">Store Result</a>
   </div>
 </nav>
 <main>${body}</main>
+<script src="/app.js"></script>
 </body>
 </html>`;
 }
